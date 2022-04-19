@@ -4,6 +4,7 @@ import pybullet as pb
 import matplotlib.pyplot as plt
 import time
 import pybullet_data
+import random
 
 # Discrete Case:
 class JengaEnv(gym.Env):
@@ -13,19 +14,23 @@ class JengaEnv(gym.Env):
 		# Define action space - discrete action that can take on 51 values (id's of the jenga blocks)
 		# the top three blocks should never be moved
 		self.action_space = gym.spaces.Discrete(51) 
+		self.observation_space = gym.spaces.box.Box(
+			low=np.zeros(51, dtype=np.float32),
+            high=np.ones(51, dtype=np.float32))
 
 		# Define the state - cannot randomly initialize, because Jenga blocks are ordered
 		# self.state=np.array(range(54))
-		self.state = np.ones(51) 
-		print("State: ", self.state)
-		# physicsClient = pb.connect(pb.DIRECT)
+		
+		# print("State: ", self.state)
+		# self.physicsClient = pb.connect(pb.DIRECT)
 		self.physicsClient = pb.connect(pb.GUI)
+
 		pb.setTimeStep(1/60, self.physicsClient) # it's vital for stablity
 
 		self.rendered_img = None
 		self.done = None
 		pb.setAdditionalSearchPath(pybullet_data.getDataPath())
-		print(pybullet_data.getDataPath())
+		# print(pybullet_data.getDataPath())
 
 		self.reset()
 
@@ -51,7 +56,7 @@ class JengaEnv(gym.Env):
 
 	def step(self, sampleID):
 		pb.removeBody(self.jengaObject[sampleID]) #delete selected block
-		print(len(self.jengaObject))
+		# print(len(self.jengaObject))
 		self.state[sampleID] = 0 #update state to describe remaining blocks
 		# print("State Shape: ", self.state.shape)
 
@@ -77,6 +82,7 @@ class JengaEnv(gym.Env):
 		pb.setGravity(0, 0, -10, physicsClientId=self.physicsClient)
 		planeId = pb.loadURDF('plane.urdf')
 
+		self.state = np.ones(51) 
 		self.done = False
 		# jengaId = pb.loadURDF('jenga/jenga.urdf', basePosition=[0,-0.05,0+.025*(1)])
 		# block_measure = tuple(map(lambda i, j: i - j, pb.getAABB(jengaId)[1], pb.getAABB(jengaId)[0]))
@@ -101,34 +107,38 @@ class JengaEnv(gym.Env):
 				self.jengaObject.append(pb.loadURDF('jenga/jenga.urdf', basePosition=[(0.5),0,0+0.3*(layer+1)-0.15], baseOrientation=[0,0,0.7071,0.7071],useFixedBase= fix_flag,flags = pb.URDF_USE_SELF_COLLISION))
 
 		# self.rewardBoard = pb.loadURDF("jenga/jenga.urdf", basePosition=[0,0,.03*(18)+0.05], globalScaling=3)
-		print("Created the Jenga Tower!")
-		pos, ang = pb.getBasePositionAndOrientation(self.jengaObject[-1], self.physicsClient)
-		print(pos)
-		return
+		# print("Created the Jenga Tower!")
+		# pos, ang = pb.getBasePositionAndOrientation(self.jengaObject[-1], self.physicsClient)
+		# print(pos)
+		return self.state
 
+if __name__ == "__main__":
+	# test code - see what is going on
 
-# test code - see what is going on
+	# create a stable tower
+	# it's not a easy way!
+	env = JengaEnv()
+	done = False
+	for i in range(300):
+		pb.stepSimulation()
+		time.sleep(1./240.)
 
-# create a stable tower
-# it's not a easy way!
-env = JengaEnv()
-done = False
-for i in range(300):
-	pb.stepSimulation()
-	time.sleep(1./240.)
+	# random remove one jengas
+	action_choices = list(np.arange(54))
+	print(action_choices)
+	print("Now start to remove the  jenga.")
 
-# random remove one jengas
+	while not done:
 
-print("Now start to remove the  jenga.")
-while not done:
-	action = env.action_space.sample()
-	print(action)
-	state,rw,done,info = env.step(action)
-	# print(state)
-	print(rw)
-# show what happened following
-for i in range(300):
-	pb.stepSimulation()
-	time.sleep(1./240.)
-# close the pybullet
-pb.disconnect()
+		action = np.random.choice(action_choices)
+		action_choices.pop(action)
+		print(action)
+		state,rw,done,info = env.step(action)
+		# print(state)
+		print(rw)
+	# show what happened following
+	for i in range(300):
+		pb.stepSimulation()
+		time.sleep(1./240.)
+	# close the pybullet
+	pb.disconnect()
