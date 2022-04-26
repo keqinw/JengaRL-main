@@ -13,24 +13,25 @@ class JengaEnv(gym.Env):
 	def __init__(self):
 		# Define action space - discrete action that can take on 51 values (id's of the jenga blocks)
 		# the top three blocks should never be moved
-		self.action_space = gym.spaces.Discrete(51) 
+		self.action_space = gym.spaces.Discrete(6) #total:51
 		self.observation_space = gym.spaces.box.Box(
-			low=np.zeros(51, dtype=np.float32),
-            high=np.ones(51, dtype=np.float32))
+			low=np.zeros(6, dtype=np.float32),
+            high=np.ones(6, dtype=np.float32))
 
 		# Define the state - cannot randomly initialize, because Jenga blocks are ordered
 		# self.state=np.array(range(54))
 		
 		# print("State: ", self.state)
-		# self.physicsClient = pb.connect(pb.DIRECT)
-		self.physicsClient = pb.connect(pb.GUI)
+		self.physicsClient = pb.connect(pb.DIRECT)
+		# self.physicsClient = pb.connect(pb.GUI)
 
 		pb.setTimeStep(1/60, self.physicsClient) # it's vital for stablity
 
 		self.rendered_img = None
 		self.done = None
+		self.num_blocks = None
 		pb.setAdditionalSearchPath(pybullet_data.getDataPath())
-		# print(pybullet_data.getDataPath())
+		print(pybullet_data.getDataPath())
 
 		self.reset()
 
@@ -57,22 +58,24 @@ class JengaEnv(gym.Env):
 	def step(self, sampleID):
 		pb.removeBody(self.jengaObject[sampleID]) #delete selected block
 		# print(len(self.jengaObject))
-		self.state[sampleID] = 0 #update state to describe remaining blocks
+		self.state[sampleID] = -10 #update state to describe remaining blocks
 		# print("State Shape: ", self.state.shape)
+		self.blocks_buffer.remove(sampleID)
 
-		num_blocks = self.state.shape[0]
-		for _ in range(300): 
+		self.num_blocks -= 1
+		for _ in range(150): 
 			pb.stepSimulation()
 
-		reward = 54 - num_blocks #increase reward for more blocks removed from tower
+		reward = (6 - self.num_blocks) #increase reward for more blocks removed from tower
 
 		# due to the top 3 blocks never moved, we can use them to indicate the fall or not
 		pos, ang = pb.getBasePositionAndOrientation(self.jengaObject[-1], self.physicsClient)
-		if pos[2] >= 5:  # the accurate value should be 5.25, but we should take some viberation into consideration
+		if pos[2] >= 0.7:  # the accurate value should be 5.25, but we should take some viberation into consideration
 			self.done = False
 		else:
-			reward = -1000
+			reward = -300
 			self.done = True
+
 		outputs = [self.state, reward, self.done, dict()]
 		return outputs
 
@@ -82,8 +85,10 @@ class JengaEnv(gym.Env):
 		pb.setGravity(0, 0, -10, physicsClientId=self.physicsClient)
 		planeId = pb.loadURDF('plane.urdf')
 
-		self.state = np.ones(51) 
+		self.state = np.ones(6) 
 		self.done = False
+		self.num_blocks = 6
+		self.blocks_buffer = list(range(self.num_blocks))
 		# jengaId = pb.loadURDF('jenga/jenga.urdf', basePosition=[0,-0.05,0+.025*(1)])
 		# block_measure = tuple(map(lambda i, j: i - j, pb.getAABB(jengaId)[1], pb.getAABB(jengaId)[0]))
 		# print("Block Measure: ", block_measure)
@@ -92,7 +97,7 @@ class JengaEnv(gym.Env):
 		#block_length = 
 		self.jengaObject=[]
 		fix_flag = False
-		for layer in range(18):
+		for layer in range(3): # test:6; total:18
 			if layer == 0:
 				self.jengaObject.append(pb.loadURDF('jenga/jenga.urdf', basePosition=[-(0.5),0,0+0.3*(layer+1)-0.15],baseOrientation=[0,0,0.7071,0.7071],useFixedBase= True,flags = pb.URDF_USE_SELF_COLLISION))
 				self.jengaObject.append(pb.loadURDF('jenga/jenga.urdf', basePosition=[0,0,0+0.3*(layer+1)-0.15],baseOrientation=[0,0,0.7071,0.7071],useFixedBase= True,flags = pb.URDF_USE_SELF_COLLISION))
@@ -124,18 +129,15 @@ if __name__ == "__main__":
 		time.sleep(1./240.)
 
 	# random remove one jengas
-	action_choices = list(np.arange(54))
-	print(action_choices)
 	print("Now start to remove the  jenga.")
 
 	while not done:
-
-		action = np.random.choice(action_choices)
-		action_choices.pop(action)
+		print(env.blocks_buffer)
+		action = np.random.choice(env.blocks_buffer)
 		print(action)
 		state,rw,done,info = env.step(action)
-		# print(state)
 		print(rw)
+
 	# show what happened following
 	for i in range(300):
 		pb.stepSimulation()
